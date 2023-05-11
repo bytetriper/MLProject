@@ -23,7 +23,7 @@ def test_map():
         return [Transform(i)/255. for i in x]
     def cut_txt(x:List[List[str]]):
         return x.split('\n')[0]
-    Dats=Dats.map(lambda x: {'image':transform(x['image']),'caption':x['caption']},batch_size=32,batched=True,num_proc=15)
+    Dats=Dats.map(lambda x: {'image':transform(x['image']),'caption':x['caption']},batch_size=32,batched=True,num_proc=32)
     Dats.set_format('torch')
     def collate_fn(x:list[dict])->BatchEncoding:
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
@@ -33,6 +33,7 @@ def test_map():
         return batched_data
     loader=DataLoader(Dats,batch_size=32,num_workers=1,collate_fn=collate_fn,pin_memory_device="cuda:0",pin_memory=True)
     first_batch=next(iter(loader))
+    print(first_batch)
 def make_dataset():
     Dats=datasets.load_dataset('nlphuji/flickr30k',keep_in_memory=True)['test']
     #remove the column 'sentids', 'split', 'img_id', 'filename' of the dataset
@@ -51,7 +52,7 @@ def make_dataset():
         return [Transform(i) for i in x]
     def transform_txt(x:List[List[str]]):
         return tokenizer(x[:][0],return_tensors='pt',padding=True)
-    Dats=Dats.map(lambda x: {'image':transform(x['image'])},batched=True,batch_size=64,num_proc=32)
+    Dats=Dats.map(lambda x: {'image':transform(x['image'])},batched=True,batch_size=64,num_proc=5)
     #Dats=Dats.map(lambda x: {'img':Transform(x['image']),'txt':x['caption']})
     #split the dataset into train and test,val with ratio: 8:1:1
     Dats=Dats.train_test_split(test_size=0.1)
