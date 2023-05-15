@@ -69,8 +69,16 @@ def make_dataset():
     #test_dataset.set_format('torch')
     print('test_dataset:',test_dataset)
     test_dataset.save_to_disk('/root/autodl-tmp/fool_clip/test_dataset')
+def get_test_dataset():
+    dataset = datasets.load_dataset("Maysee/tiny-imagenet",keep_in_memory=True)
+    purified=dataset.map(
+        lambda x: {'image':x['image'].convert('RGB'),'label':x['label']},
+        num_proc=15
+    )
+    purified.save_to_disk('/root/autodl-tmp/fool_clip/tiny-imagenet')
 if __name__ == "__main__":
-    make_dataset()
+    get_test_dataset()
+    #make_dataset()
     #test_map()
     #test_dict=[{'a':'a'},{'a':'c'}]
     #print(test_dict[0]['a'])
