@@ -66,14 +66,13 @@ class CLIPLoader(DataLoader):
         if not hasattr(self,'_tokenizer_default'):
             self._tokenizer_default=CLIPTokenizerFast.from_pretrained(Params["model_name"],local_files_only=True)
         return self._tokenizer_default
-    def collate_fn_default(self,x:list[dict])->BatchEncoding:
+    def collate_fn_default(self,x:List[dict])->torch.Tensor:
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
         # return a BatchEncoding
-        batched_data = self.tokenizer_default([i['caption'][0][:100]
-                                 for i in x], padding=True, return_tensors='pt')
-        batched_data['pixel_values'] = torch.stack(
+        data= torch.stack(
             [i['image'].float()/255 for i in x])
-        return batched_data
+        #batched_data= BatchEncoding(data={'pixel_values':data},return_tensors='pt')
+        return data
     def __init__(self,dataset:Dataset,batch_size:int=1,shuffle:bool=False,num_workers:int=0,collate_fn=None,pin_memory:bool=False,pin_memory_device=None):
         if collate_fn is None:
             collate_fn=self.collate_fn_default    

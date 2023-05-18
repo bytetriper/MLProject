@@ -25,7 +25,7 @@ def test_map():
         return x.split('\n')[0]
     Dats=Dats.map(lambda x: {'image':transform(x['image']),'caption':x['caption']},batch_size=32,batched=True,num_proc=32)
     Dats.set_format('torch')
-    def collate_fn(x:list[dict])->BatchEncoding:
+    def collate_fn(x:List[dict])->BatchEncoding:
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
         # return a BatchEncoding
         batched_data=tokenizer([i['caption'][0] for i in x],padding=True,return_tensors='pt')
@@ -69,16 +69,32 @@ def make_dataset():
     #test_dataset.set_format('torch')
     print('test_dataset:',test_dataset)
     test_dataset.save_to_disk('/root/autodl-tmp/fool_clip/test_dataset')
-def get_test_dataset():
+def get_tiny_imagenet_dataset():
     dataset = datasets.load_dataset("Maysee/tiny-imagenet",keep_in_memory=True)
     purified=dataset.map(
         lambda x: {'image':x['image'].convert('RGB'),'label':x['label']},
         num_proc=15
     )
     purified.save_to_disk('/root/autodl-tmp/fool_clip/tiny-imagenet')
+def get_cifar10_dataset():
+    dataset=datasets.load_dataset('cifar10',keep_in_memory=True)
+    purified=dataset.map(
+        lambda x: {'image':x['img'].convert('RGB'),'label':x['label']},
+        num_proc=15
+    )
+    purified.save_to_disk('/root/autodl-tmp/fool_clip/cifar10')
+def get_cifar100_dataset():
+    dataset=datasets.load_dataset('cifar100',keep_in_memory=True)
+    print(dataset)
+    purified=dataset.map(
+        lambda x: {'image':x['img'].convert('RGB'),'label':x['fine_label']},
+        num_proc=15
+    )
+    purified.save_to_disk('/root/autodl-tmp/fool_clip/cifar100')
 if __name__ == "__main__":
-    get_test_dataset()
+    #get_cifar100_dataset()
     #make_dataset()
     #test_map()
     #test_dict=[{'a':'a'},{'a':'c'}]
     #print(test_dict[0]['a'])
+    dataset=datasets.load_dataset('imagenet')

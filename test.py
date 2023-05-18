@@ -1,5 +1,5 @@
 from net import Wrapper,Params
-from transformers import CLIPTokenizerFast,CLIPModel
+from transformers import CLIPTokenizerFast,CLIPModel,CLIPProcessor
 import datasets
 from torch.utils.data import DataLoader
 from utils import *
@@ -11,6 +11,7 @@ import random
 from time import time
 from utils import *
 import torch.nn as nn
+from train import train_vae_model
 def train_model(model: Wrapper, dataset: datasets.DatasetDict):
     train_set = dataset['train']
     # remove 'image' 'caption' from the dataset
@@ -30,7 +31,7 @@ def test_correctness():
     tokenizer = CLIPTokenizerFast.from_pretrained(
         Params['model_path'])
 
-    def collate_fn(x: list[dict]) -> BatchEncoding:
+    def collate_fn(x: List[dict]) -> BatchEncoding:
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
         # return a BatchEncoding
         batched_data = tokenizer([i['caption'][0][:100]
@@ -133,7 +134,9 @@ def get_visualization(model:nn.Module=None,pid:int=-1,random_seed:int=-1,ori_img
     random.seed(time() if random_seed==-1 else random_seed)
     print('getting visualization')
     if model is None:
-        model=Wrapper()
+        model=Wrapper().model
+    for para in model.gen.parameters():
+        para.data=para.data.float()
     #acc=test_zero_shot_classfication(model=model)
     dataset=datasets.load_from_disk(Params['train_dataset_path'],keep_in_memory=True)['test']
     dataset.set_format('torch',columns=['image','caption'])
@@ -179,7 +182,7 @@ def test_noise():
     dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)['test']
     dataset.set_format('torch',columns=['image','caption'])
     tokenizer = CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch16")
-    def collate_fn(x: list[dict]) -> BatchEncoding:
+    def collate_fn(x: List[dict]) -> BatchEncoding:
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
         # return a BatchEncoding
         batched_data = tokenizer([i['caption'][Params['select_col']][:100]
@@ -205,3 +208,39 @@ def test_noise():
     #print a pretty message to stdout
     print(f"Accuracy: {correct/total}")
     return correct/total
+def test_loss():
+    model=Wrapper()
+    dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)['test']
+    dataset.set_format('torch',columns=['image','caption'])
+    loader=CLIPLoader(dataset, batch_size=Params['batch_size'], num_workers=Params['num_workers'], shuffle=True,
+                              collate_fn=None, pin_memory_device="cuda:0", pin_memory=True)
+    model.eval()
+    for para in model.model.gen.parameters():
+        para.data=para.data.float()
+    for para in model.model.target.parameters():
+        para.data=para.data.float()
+    data=next(iter(loader)).to(Params['device']).float()
+    y=model(data)
+    loss=model.loss(y)
+    print(loss)
+if __name__== "__main__":
+    train_vae_model(True)
+    """
+    dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)['test']
+    print(dataset)
+    dataset.set_format("torch")
+    image=dataset[0]['image'].float().unsqueeze(0).cuda()/255.
+    model=Wrapper(image=image)
+    model.model.train()
+    outputs=model.forward()
+    loss,_=model.loss(outputs)
+    print(loss)
+    loss.backward()
+    model.optim.step()
+    model.optim.zero_grad()
+    outputs=model.forward()
+    loss,_=model.loss(outputs)
+    print(loss)
+    loss.backward()
+    print(model.model.input_img.grad)
+    """

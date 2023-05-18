@@ -1,16 +1,18 @@
 import torch
 Params = {
-    'lr': 1e-5,
+    'lr': 5e-3,
     'device': 'cuda' if torch.cuda.is_available() else 'cpu',
     'save_generator': True,
     'load_generator': False,
-    'generator_path': '/root/autodl-tmp/fool_clip/models/generator.pth',
+    'base_path': '/root/autodl-tmp/fool_clip/models/generator.pth',
+    'unet_path': '/root/autodl-tmp/fool_clip/models/u_gen.pth',
     'model_name': 'openai/clip-vit-base-patch16',
+    'difuse_name': 'openai/clip-vit-base-patch16',
     'batch_size': 32,
-    'epochs': 5,
+    'epochs': 3,
     'select_col': 1,  # should be in range [0-4]
     'num_workers': 5,
-    "noise_bound": 16/255,
+    "noise_bound": 8/255,
     "train_dataset_path": "/root/autodl-tmp/fool_clip/train_dataset",
     "test_dataset_path": "/root/autodl-tmp/fool_clip/test_dataset",
     "transfer_dataset_path": "/root/autodl-tmp/fool_clip/tiny-imagenet",
@@ -19,5 +21,10 @@ Params = {
     "noised_image_path": "/root/autodl-tmp/fool_clip/imgs/noised.png",
     "noise_image_path": "/root/autodl-tmp/fool_clip/imgs/noise.png",
     "noise_path": "/root/autodl-tmp/fool_clip/data/noise.npy",
-
+    "last_epoch": 0,
+    'step': 4,
+    'opt_level': 'O2',
+    'amp_mode': False,
+    'target': 'resnet50',
+    'base': 'base'
 }
