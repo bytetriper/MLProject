@@ -16,7 +16,7 @@ from apex import amp
 from torchvision import models
 from torchvision.models.resnet import ResNet50_Weights
 from diffusers import AutoencoderKL
-import torch.functional as F
+from Constants import IMAGENET_MEAN, IMAGENET_STD
 # from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
 """
 old setting:
@@ -213,6 +213,7 @@ class U_Fool(nn.Module):
         """
         self.Base_Unet.enable_gradient_checkpointing()
 
+
 class Integrated_Model(nn.Module):
     def __init__(self, mode: str = 'base', naive_target: str = 'clip'):
         super(Integrated_Model, self).__init__()
@@ -237,6 +238,7 @@ class Integrated_Model(nn.Module):
         else:
             raise ValueError('naive_target must be clip or resnet50')
         self.naive_target = naive_target
+
     def forward(self, x: torch.Tensor) -> CLIPVisionModelOutput:
         img = x
         if self.naive_target == 'clip':
@@ -281,127 +283,128 @@ class Integrated_Model(nn.Module):
 
 
 class Integreted_VAE_Model(nn.Module):
-    def __init__(self, mode: str, target: str, with_gen:bool=False,input_img:torch.Tensor=None):
+    def __init__(self, gen:nn.Module,target: nn.Module, input_img: torch.Tensor = None):
         super(Integreted_VAE_Model, self).__init__()
-        self.mode=mode
-        self.target_mode=target
+        self.target_mode = target
         self.VAE = AutoencoderKL.from_pretrained(
-            "stabilityai/stable-diffusion-2-base",subfolder="vae").to(Params['device'])
+            "stabilityai/stable-diffusion-2-base", subfolder="vae").to(Params['device'])
         self.scale = 0.18215  # constant scale set in VAE encoder and decoder
-        self.with_gen=with_gen
-        #self.VAE.encoder.requires_grad_(False)  # freeze VAE encoder
-        if with_gen:
-            if mode == 'base':
-                print('use resnet to generate')
-                self.gen = Fool_CLip()
-            elif mode == 'unet':
-                print('use unet to generate')
-                self.gen = U_Fool()
-            self.gen=self.gen.to(Params['device'])
+        self.with_gen = gen is not None
+        self.VAE.encoder.requires_grad_(False)  # freeze VAE encoder
+        if self.with_gen:
+            self.gen = gen
+        # self.VAE.encoder.requires_grad_(False)  # freeze VAE encoder
+        if input_img is None:
+            # print a warning
+            print('input_img is None, please set it later')
         else:
-            if input_img is None:
-                raise ValueError('input_img must be provided when with_gen is false')
-            self.input_img=self.encode(input_img).detach()
-            self.input_img.requires_grad=True
-        if target == 'clip':
-            self.target = CLIPVisionModelWithProjection.from_pretrained(
-                Params['model_name'], local_files_only=True)
-        else:
-            self.target = models.resnet50(
-                pretrained=False)
-            self.target.load_state_dict(torch.load("./models/test_resnet.pth"))
-        self.target=self.target.to(Params['device'])
-        if not with_gen:
-            self.original_outputs = self.forward(input_img.detach())
-            self.original_outputs['last_hidden_state']=self.original_outputs['last_hidden_state'].detach()
-            self.original_outputs['hidden_states']=[x.detach() for x in self.original_outputs['hidden_states']]
+            self.input_img = input_img.to(Params['device'])
+        self.target = target.to(Params['device'])
+        self.target = self.target
+        self.preprocesser=Image_Net_Constants()
         print('model init done')
+    def init_img(self, img: torch.Tensor):
+        self.input_img = img.to(Params['device'])
+        self.input_img.requires_grad_(True)
+    def init_features(self, image: torch.Tensor = None ,save_orginal_feature:bool=False):
+        if image is None:
+            image = self.input_img
+        assert image is not None
+        self.latents = self.encode(image).detach()
+        self.latents.requires_grad_(True)
+        if save_orginal_feature:
+            self.original_outputs = self.forward(self.latents.detach())
+            self.original_outputs['last_hidden_state'] = self.original_outputs['last_hidden_state'].detach(
+            )
+            self.original_outputs['hidden_states'] = [
+                x.detach() for x in self.original_outputs['hidden_states']]
+
     def eval(self):
         self.VAE.eval()
         self.target.eval()
         if self.with_gen:
             self.gen.eval()
+
     def train(self):
         self.VAE.train()
         self.target.train()
         if self.with_gen:
             self.gen.train()
+
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         x = 2*x-1.0
         return self.scale*self.VAE.encode(x).latent_dist.sample()
-    def TransferToClipOutput(self,inputs:torch.Tensor)->CLIPVisionModelOutput:
-        if self.target_mode == 'clip':
-            outputs = self.target(inputs, output_hidden_states=True)
-        elif self.target_mode == 'resnet50':
-            outputs, hidden_state = self.target(
-                inputs, output_hidden_states=True)
-            outputs = CLIPVisionModelOutput(
-                image_embeds=None,
-                last_hidden_state=outputs,
-                hidden_states=hidden_state,
-                attentions=None,
-            )
-        else:
-            raise ValueError('target must be clip or resnet50')
-        return outputs
+
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         latents = 1 / 0.18215 * latents
         image = self.VAE.decode(latents)['sample']
         image = (image/2 + 0.5).clamp(0, 1)
+
         return image
-    def forward(self, x: torch.Tensor=None) -> CLIPVisionModelOutput:
+    def target_forward(self, x: torch.Tensor = None ,*args,**kwargs) -> CLIPVisionModelOutput:
+        if self.with_gen:
+            pass
+        else:
+            output_hidden=False
+            if 'output_hidden_states' in kwargs:
+                output_hidden=kwargs['output_hidden_states']
+            outputs = self.target(self.input_img,output_hidden_states=output_hidden)
+            return outputs
+    def forward(self, x: torch.Tensor = None ,*args,**kwargs) -> CLIPVisionModelOutput:
         if self.with_gen:
             img = x
             if self.training:
-                self.original_outputs = self.TransferToClipOutput(img)
+                self.original_outputs = self.target(
+                    img, *args, **kwargs)
             # print('gen')
-            img=self.encode(img)
-            noised, _ = self.gen(img)
-            noised=self.decode(noised)
-            if self.target_mode == 'clip':
-                fnoised = self.gen2clip(noised)
-            else:
-                fnoised=noised    
-            outputs = self.TransferToClipOutput(fnoised)
+            latent = self.encode(img)
+            noised_latent = self.gen(latent, *args, **kwargs)
+            noised = self.decode(noised_latent)
+            outputs= self.target(noised,*args,**kwargs)            
             return outputs
         else:
-            img=self.decode(self.input_img)
-            outputs = self.TransferToClipOutput(img)
-            return outputs
-        
+            if not hasattr(self,'latents'):
+                raise RuntimeError('latents not init')
+            img = self.decode(self.latents)
+            output_hidden=False
+            if 'output_hidden_states' in kwargs:
+                output_hidden=kwargs['output_hidden_states']
+            outputs = self.target(img,output_hidden_states=output_hidden)
+            return outputs,img
+
+
 class Wrapper():
-    def __init__(self, mode: str = Params['base'], target: str = Params['target'], amp_mode: bool = Params['amp_mode'],image:torch.Tensor=None):
+    def __init__(self,gen:nn.Module, target: nn.Module , amp_mode: bool = Params['amp_mode'], image: torch.Tensor = None):
         super(Wrapper, self).__init__()
-        #self.model = Integrated_Model(mode, target).to(Params['device'])
-        self.model=Integreted_VAE_Model(mode,target,with_gen=False,input_img=image).to(Params['device'])
+        # self.model = Integrated_Model(mode, target).to(Params['device'])
+        self.model = Integreted_VAE_Model(
+            gen, target, input_img=image).to(Params['device'])
         if self.model.with_gen:
             self.optim = optim.AdamW([{'params': self.model.gen.parameters(),
                                       'initial_lr': 1}], lr=Params['lr'])
+            self.schel = optim.lr_scheduler.StepLR(
+                self.optim, step_size=20, gamma=1)
         else:
-            self.optim = optim.AdamW([{'params': self.model.input_img,  
-                                        'initial_lr': 1}], lr=Params['lr'])
-        self.optim.zero_grad()
+            self.optim = None
         self.cosloss_label = torch.ones(
             Params['batch_size'], dtype=torch.int, device=Params['device'])
         self.amp_mode = amp_mode
-        self.target = target
-        self.mode = mode
         if self.amp_mode:
             print('amp mode on')
-            self.model, self.optim = amp.initialize(
-                self.model, self.optim, opt_level=Params['opt_level'])
-        if Params['load_generator']:
-            print('load generator from {}'.format(
-                Params['base_path'] if mode == 'base' else Params['unet_path']))
+            if self.optim is not None:
+                self.model, self.optim = amp.initialize(
+                    self.model, self.optim, opt_level=Params['opt_level'])
+        if Params['load_generator'] and gen is not None:
             self.load()
         C = 785
-        #self.schel = optim.lr_scheduler.LambdaLR(
+        # self.schel = optim.lr_scheduler.LambdaLR(
         #    self.optim, self.warm_up, last_epoch=1+Params['last_epoch']*C)
-        self.schel=optim.lr_scheduler.StepLR(self.optim,step_size=20,gamma=1)
+        
+
     def warm_up(self, epoch):
         # before a hundred epoch, the lr satisfy lr=epoch*1e-5
         if epoch < 200:
-            return (epoch//5)*1e7
+            return (epoch//5)*1e-5
         # otherwise, the lr satisfy a weight dacay of 0.85 per a hundred epoch
         else:
             return 4e-4 * 0.9 ** ((epoch-200)//100)
@@ -409,7 +412,7 @@ class Wrapper():
     def __call__(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.model.forward(inputs)
 
-    def forward(self, inputs: torch.Tensor=None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor = None) -> torch.Tensor:
         return self.model.forward(inputs)
 
     def train(self):
@@ -417,7 +420,20 @@ class Wrapper():
 
     def eval(self):
         self.model.eval()
-
+    def init_features(self,image:torch.Tensor)->None:
+        self.model.init_features(image)
+        self.image=image
+        self.optim=optim.AdamW([{'params': self.model.latents,
+                                        'initial_lr': 1}], lr=Params['lr'])
+        self.schel = optim.lr_scheduler.StepLR(
+            self.optim, step_size=5, gamma=1.)
+    def init_imgs(self,imgs:torch.Tensor)->None:
+        self.model.init_img(imgs)
+        self.optim=optim.AdamW([{'params': self.model.input_img,
+                                        'initial_lr': 1}], lr=Params['lr'])
+        self.schel = optim.lr_scheduler.StepLR(
+            self.optim, step_size=5, gamma=1.)
+        
     def loss(self, outputs: CLIPVisionModelOutput):
         loss = 0
         if self.target == 'clip':
@@ -432,25 +448,27 @@ class Wrapper():
                             self.model.original_outputs['last_hidden_state']).mean()
             imgloss = torch.tensor(0).cuda()
         return loss, imgloss
-    def CEloss(self,outputs:CLIPVisionModelOutput,label:torch.Tensor):
-        state=outputs['last_hidden_state']
-        lossf=nn.CrossEntropyLoss()
-        loss=lossf(state,label)
+
+    def CEloss(self, outputs: CLIPVisionModelOutput, label: torch.Tensor):
+        state = outputs['last_hidden_state']
+        lossf = nn.CrossEntropyLoss()
+        loss = lossf(state, label)
         return loss
+
     def load(self) -> None:
-        path = Params['base_path'] if self.mode == 'base' else Params['unet_path']
+        path = Params['generator_path']
         if self.amp_mode:
-            print('load amp')
+            print('load amp from {}'.format(path))
             checkpoint = torch.load(path)
             self.model.gen.load_state_dict(checkpoint['gen'])
             self.optim.load_state_dict(checkpoint['optim'])
             amp.load_state_dict(torch.load(path)['amp'])
         else:
+            print('load from {}'.format(path))
             self.model.gen.load_state_dict(torch.load(path)['gen'])
 
     def save(self) -> None:
-        print('mode:'+self.mode)
-        path = Params['base_path'] if self.mode == 'base' else Params['unet_path']
+        path = Params['generator_path']
         if self.amp_mode:
             print('save amp in {}'.format(path))
             torch.save({'gen': self.model.gen.state_dict(
@@ -458,24 +476,69 @@ class Wrapper():
         else:
             print('save in {}'.format(path))
             torch.save({'gen': self.model.gen.state_dict()}, path)
-    def gradient_ascent(self,epoch:int,label:torch.Tensor=None)->torch.Tensor:
+    def PGD_direct_attack(self,epoch:int,attached_fn,loss_fn,eps:float, label:torch.Tensor,output_hidden:bool=False)->torch.Tensor:
         assert self.model.with_gen==False
         self.model.train()
-        tbar=tqdm(range(epoch),desc='gradient ascent')
-        data=self.model.input_img.clone()
+        tbar=tqdm(range(epoch),desc='PGD direct attack')
+        data_lbound=torch.max(self.model.input_img-eps,torch.zeros_like(self.model.input_img))
+        data_ubound=torch.min(self.model.input_img+eps,torch.ones_like(self.model.input_img))
+        data=self.model.input_img.clone().detach()
+        record=[]
         for t in tbar:
             self.optim.zero_grad()
-            outputs=self.model()
-            if label is None:
-                loss,_=self.loss(outputs)
+            outputs=self.model.target_forward(output_hidden_states=output_hidden)
+            if isinstance(outputs,tuple):
+                logits=outputs[1]
             else:
-                loss=-self.CEloss(outputs,label)
+                logits=outputs
+            loss=loss_fn(noised=self.model.input_img,outputs=outputs,labels=label,image=data)
+            pred=torch.argmax(logits,dim=1)
+            acc=(pred==label).float().mean()
+            record.append((attached_fn(noised=self.model.input_img,image=data).detach(),acc))
             loss.backward()
-            self.optim.step()
+            self.model.input_img.grad.sign_()
+            #perform PGD
+            self.model.input_img.data=self.model.input_img.data+eps*self.model.input_img.grad
+            self.model.input_img.data.clamp_(data_lbound,data_ubound)
+            tbar.set_postfix({'loss':loss.item()})
+        return self.model.input_img,record
+    def gradient_ascent(self, epoch: int,attached_fn, loss_fn ,label: torch.Tensor = None,PGD_eps:float=0,output_hidden:bool=False) -> torch.Tensor:
+        assert self.model.with_gen == False
+        if PGD_eps>0:
+            print('PGD_eps:{}'.format(PGD_eps))
+        self.model.train()
+        tbar = tqdm(range(epoch), desc='gradient ascent')
+        data = self.model.latents.clone().detach()
+        if output_hidden:
+            feature=self.model(output_hidden_states=output_hidden)[0][0]
+            feature=[f.detach() for f in feature]
+            self.image=(feature,self.image)
+        record=[]
+        for t in tbar:
+            self.optim.zero_grad()
+            outputs,noised = self.model(output_hidden_states=output_hidden)
+            loss= -loss_fn(noised=noised,outputs=outputs,labels=label,image=self.image)
+            if isinstance(outputs,tuple):
+                logits=outputs[1]
+            else:
+                logits=outputs
+            pred=torch.argmax(logits,dim=1)
+            acc=(pred==label).float().mean()
+            record.append((attached_fn(noised=noised,image=self.image).detach(),acc))
+            loss.backward()
+            if PGD_eps>0:
+                #use PGD attack rather than normal gradient ascent
+                lr=self.optim.param_groups[0]['lr']
+                self.model.latents = torch.clamp(self.model.latents-lr*self.model.latents.grad.sign(),data-PGD_eps,data+PGD_eps).detach()
+                self.model.latents.requires_grad=True
+            else:
+                self.optim.step()
             self.schel.step()
-            tbar.set_postfix({'loss':loss.item(),'lr':self.optim.param_groups[0]['lr']})
-        print(torch.abs(data-self.model.input_img).mean())
-        return self.model.decode(self.model.input_img)
+            tbar.set_postfix(
+                {'loss': -loss.item(), 'lr': self.optim.param_groups[0]['lr']})
+        print("l1 latent dis:",torch.abs(data-self.model.latents).mean())
+        print("linf latent dis:",torch.abs(data-self.model.latents).max())
+        return self.model.decode(self.model.latents),record
 
     def train(self, dataloader: DataLoader, summary_folder: str = None) -> List[float]:
         self.model.train()

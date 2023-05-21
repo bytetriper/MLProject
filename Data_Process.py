@@ -6,6 +6,7 @@ from transformers import CLIPProcessor,CLIPModel,CLIPImageProcessor,CLIPTokenize
 from transformers.tokenization_utils_base import BatchEncoding
 from PIL import Image
 from typing import List
+from Params import Params
 from torch.utils.data import DataLoader
 def test_map():
     Dats=datasets.load_dataset('nlphuji/flickr30k')['test'].train_test_split(test_size=0.02)['test']
@@ -82,6 +83,7 @@ def get_cifar10_dataset():
         lambda x: {'image':x['img'].convert('RGB'),'label':x['label']},
         num_proc=15
     )
+    print(purified)
     purified.save_to_disk('/root/autodl-tmp/fool_clip/cifar10')
 def get_cifar100_dataset():
     dataset=datasets.load_dataset('cifar100',keep_in_memory=True)
@@ -91,10 +93,24 @@ def get_cifar100_dataset():
         num_proc=15
     )
     purified.save_to_disk('/root/autodl-tmp/fool_clip/cifar100')
+def get_imagenet_dataset():
+    dataset = datasets.load_dataset("mrm8488/ImageNet1K-val",cache_dir='../Imagenet')
+    dataset.save_to_disk('/root/autodl-tmp/datasets/ImageNet1K-val')
+    print(dataset)
+def split_dataset():
+    dataset=datasets.load_from_disk(Params['train_dataset_path'])['train']
+    dataset=dataset.filter(lambda x: x['label'] is not None and x['label']!=-1 and x['label']>=0 and x['label']<=1000 , num_proc=15)
+    print(dataset)
+    dataset=dataset.train_test_split(test_size=0.02)['test']
+    print(dataset)
+    dataset.save_to_disk('/root/autodl-tmp/datasets/ImageNet1k-split')
 if __name__ == "__main__":
     #get_cifar100_dataset()
     #make_dataset()
     #test_map()
     #test_dict=[{'a':'a'},{'a':'c'}]
     #print(test_dict[0]['a'])
-    dataset=datasets.load_dataset('imagenet')
+    #dataset=datasets.load_dataset('imagenet')
+    #get_imagenet_dataset()
+    #split_dataset()
+    get_cifar10_dataset()

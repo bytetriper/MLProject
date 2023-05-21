@@ -11,7 +11,8 @@ import random
 from time import time
 from utils import *
 import torch.nn as nn
-from train import train_vae_model
+from evaluation import TEST_PIPELINE
+from torchmetrics import StructuralSimilarityIndexMeasure as ssim
 def train_model(model: Wrapper, dataset: datasets.DatasetDict):
     train_set = dataset['train']
     # remove 'image' 'caption' from the dataset
@@ -31,7 +32,7 @@ def test_correctness():
     tokenizer = CLIPTokenizerFast.from_pretrained(
         Params['model_path'])
 
-    def collate_fn(x: List[dict]) -> BatchEncoding:
+    def collate_fn(x: List[dict]) :
         # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
         # return a BatchEncoding
         batched_data = tokenizer([i['caption'][0][:100]
@@ -207,6 +208,7 @@ def test_noise():
     #return accuracy
     #print a pretty message to stdout
     print(f"Accuracy: {correct/total}")
+    
     return correct/total
 def test_loss():
     model=Wrapper()
@@ -223,8 +225,16 @@ def test_loss():
     y=model(data)
     loss=model.loss(y)
     print(loss)
+def make_noise():
+    pipl=TEST_PIPELINE()
+    test_dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)
+    dataset=pipl.MAKE_NOISED_DATASET(50,test_dataset)
+    dataset.save_to_disk(Params['noised_dataset_path'])
 if __name__== "__main__":
-    train_vae_model(True)
+    make_noise()
+    #train_vae_model(True)
+    #dataset=datasets.load_dataset("mrm8488/ImageNet1K-val",cache_dir='../Imagenet')
+   # print(dataset)
     """
     dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)['test']
     print(dataset)

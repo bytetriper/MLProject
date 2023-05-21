@@ -13,6 +13,8 @@ from torch.utils.data import Dataset,DataLoader
 from transformers import CLIPTokenizerFast
 import torch
 import datasets
+from Constants import *
+from torchvision import transforms
 class Img_Processor():
     """
         deprecated
@@ -85,6 +87,51 @@ class CLIPLoader(DataLoader):
             pin_memory=pin_memory,
             pin_memory_device=pin_memory_device
         )
+class Image_Net_Constants():
+    def __init__(self) -> None:
+        self.mean=torch.tensor(IMAGENET_MEAN)
+        self.std=torch.tensor(IMAGENET_STD)
+    def __call__(self,x)->torch.Tensor:
+        assert len(x.shape)==4
+        returned=torch.zeros_like(x)
+        for channel in range(3):
+            returned[:,channel]=(x[:,channel]-self.mean[channel])/self.std[channel]
+        return returned
+class ImageNet_Loader(DataLoader):
+    """
+    A DataLoader for ImageNEt dataset
+    """
+    def __init__(self,noised:bool=True,batch_size:int=1,shuffle:bool=False,num_workers:int=0,collate_fn=None,pin_memory:bool=False,pin_memory_device=None):
+        if collate_fn is None:
+            collate_fn=self.collate_fn_default
+        path=Params['train_dataset_path'] if not noised else Params['noised_dataset_path']
+        dataset=datasets.load_from_disk(path,keep_in_memory=True)
+        if noised:
+            dataset.set_format(type='torch')
+            collate_fn=None
+
+        super(ImageNet_Loader,self).__init__(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            collate_fn=collate_fn,
+            pin_memory=pin_memory,
+            pin_memory_device=pin_memory_device
+        )
+    def collate_fn_default(self,x:List[dict])->torch.Tensor:
+        # x: [{img:tensor,caption:{input_ids: list[int],attention_mask:list[int]} },...]
+        # return a BatchEncoding
+        transform=transforms.Compose([
+            transforms.Resize((224,224)),
+            transforms.ToTensor()])
+        data= torch.stack(
+            [transform(i['image'].convert('RGB')).float() for i in x])
+        label=torch.tensor(
+            [i['label'] for i in x]
+        )
+        #batched_data= BatchEncoding(data={'pixel_values':data},return_tensors='pt')
+        return {'image':data,'label':label}
 
 def load_data_with_retry(path: str,keep_in_memory:bool=True, retry_times: int = 5) -> datasets.Dataset:
     """
@@ -98,3 +145,59 @@ def load_data_with_retry(path: str,keep_in_memory:bool=True, retry_times: int = 
             print(f"load data from {path} failed, retrying {i+1} times")
             print(e)
     raise Exception(f"load data from {path} failed after {retry_times} times")
+from matplotlib import pyplot as plt
+def plt_img(img:torch.Tensor,save_path:str):
+    """
+        plot the image and save it to save_path
+    """
+    assert len(img.shape)==3
+    transform=transforms.Compose([
+        transforms.TensorToPILImage(),])
+    pil_img=transform(img.cpu())
+    #use plt to plot the image without axis
+    plt.axis('off')
+    plt.imshow(pil_img)
+    print('saving in'+save_path)
+    plt.savefig(save_path,bbox_inches='tight',pad_inches=0)
+def plt_imgs(imgs:torch.Tensor,save_path:str):
+    """
+        plot the image and save it to save_path
+    """
+    if len(imgs.shape)==3:
+        plt_img(imgs,save_path+'plt.pdf')
+    assert len(imgs.shape)==4
+    transform=transforms.Compose([
+        transforms.ToPILImage(),])
+    for i,img in enumerate(imgs):
+        pil_img=transform(img.cpu())
+        #use plt to plot the image without axis
+        plt.axis('off')
+        plt.imshow(pil_img)
+        print('saving in'+save_path+f'plt_{i}.pdf')
+        plt.savefig(save_path+f'plt_{i}.pdf',bbox_inches='tight',pad_inches=0)
+def plt_difs(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
+    assert(imgs.shape==noised.shape)
+    assert(len(imgs.shape)==4)
+    #plot both imgs and noised in one figure
+    transform=transforms.Compose([
+        transforms.ToPILImage(),])
+    for i,(img,noise) in enumerate(zip(imgs,noised)):
+        pil_img=transform(img.cpu())
+        pil_noise=transform(noise.cpu())
+        #use plt to plot the image without axis
+        plt.axis('off')
+        #plt pil_img and pil_noise in two subfigure
+        plt.subplot(1,2,1)
+        plt.imshow(pil_img)
+        plt.subplot(1,2,2)
+        plt.imshow(pil_noise)
+        print('saving in'+save_path+f'plt_{i}.pdf')
+        plt.savefig(save_path+f'plt_{i}.pdf',bbox_inches='tight',pad_inches=0)
+def plt_noise(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
+    assert(imgs.shape==noised.shape)
+    assert(len(imgs.shape)==4)
+    noise=noised-imgs
+    noise+=noise.min() if noise.min()<0 else 0
+    print('saving in '+save_path)
+    plt_imgs(noise,save_path,bbox_inches='tight',pad_inches=0)
+
