@@ -13,7 +13,7 @@ Params = {
     'num_workers': 5,
     "noise_bound": 8/255,
     "train_dataset_path": "/root/autodl-tmp/datasets/ImageNet1k-split",
-    "noised_dataset_path": "/root/autodl-tmp/datasets/ViT_30_DA-val",
+    "noised_dataset_path": "/root/autodl-tmp/datasets/ViT_30",
     "summary_path": "/root/autodl-tmp/MLProject/summary",
     "original_image_path": "/root/autodl-tmp/MLProject/imgs/source.png",
     "noised_image_path": "/root/autodl-tmp/MLProject/imgs/noised.png",
@@ -25,5 +25,6 @@ Params = {
     'amp_mode': False,
     'ascented_image_path': "/root/autodl-tmp/MLProject/demo/ascented/",
     'original_image_path': "/root/autodl-tmp/MLProject/demo/original/",
+    'noise_path': "/root/autodl-tmp/MLProject/demo/noise/",
     'difference_image_path': "/root/autodl-tmp/MLProject/demo/difference/",
 }

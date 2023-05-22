@@ -6,7 +6,7 @@ import os
 from math import log2,tan,pi
 import scienceplots
 plt.style.use('science')
-with open('PGD_Conv.pkl', 'rb') as f:
+with open('loss_list_ViT.pkl', 'rb') as f:
     loss_list = pickle.load(f)
 # f is a list of (tensor,tensor)
 def test_fit(x,y):
@@ -23,8 +23,8 @@ ax1.set_ylabel(r'$\Delta \mathcal{S}$', color=color)
 ax1.set_xlabel(r'$\Delta Acc$')
 ax1.plot(data2, data1, color=color)
 ax1.tick_params(axis='y', labelcolor=color)
-plt.savefig('./list.pdf',bbox_inches='tight')
 plt.savefig('./list.png',bbox_inches='tight')
+plt.savefig('./list.svg',bbox_inches='tight')
 ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
 color = 'tab:blue'

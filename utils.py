@@ -164,7 +164,7 @@ def plt_imgs(imgs:torch.Tensor,save_path:str):
         plot the image and save it to save_path
     """
     if len(imgs.shape)==3:
-        plt_img(imgs,save_path+'plt.pdf')
+        plt_img(imgs,save_path+'plt.svg')
     assert len(imgs.shape)==4
     transform=transforms.Compose([
         transforms.ToPILImage(),])
@@ -173,8 +173,9 @@ def plt_imgs(imgs:torch.Tensor,save_path:str):
         #use plt to plot the image without axis
         plt.axis('off')
         plt.imshow(pil_img)
-        print('saving in'+save_path+f'plt_{i}.pdf')
-        plt.savefig(save_path+f'plt_{i}.pdf',bbox_inches='tight',pad_inches=0)
+        print('saving in'+save_path+f'plt_{i}.svg')
+        plt.savefig(save_path+f'plt_{i}.svg',bbox_inches='tight',pad_inches=0)
+        plt.savefig(save_path+f'plt_{i}.png',bbox_inches='tight',pad_inches=0)
 def plt_difs(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
     assert(imgs.shape==noised.shape)
     assert(len(imgs.shape)==4)
@@ -185,14 +186,16 @@ def plt_difs(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
         pil_img=transform(img.cpu())
         pil_noise=transform(noise.cpu())
         #use plt to plot the image without axis
-        plt.axis('off')
+        
         #plt pil_img and pil_noise in two subfigure
         plt.subplot(1,2,1)
         plt.imshow(pil_img)
         plt.subplot(1,2,2)
         plt.imshow(pil_noise)
-        print('saving in'+save_path+f'plt_{i}.pdf')
-        plt.savefig(save_path+f'plt_{i}.pdf',bbox_inches='tight',pad_inches=0)
+        plt.axis('off')
+        print('saving in'+save_path+f'plt_{i}.svg')
+        plt.savefig(save_path+f'plt_{i}.svg',bbox_inches='tight',pad_inches=0)
+        plt.savefig(save_path+f'plt_{i}.png',bbox_inches='tight',pad_inches=0)
 def plt_noise(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
     assert(imgs.shape==noised.shape)
     assert(len(imgs.shape)==4)
@@ -200,4 +203,21 @@ def plt_noise(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
     noise+=noise.min() if noise.min()<0 else 0
     print('saving in '+save_path)
     plt_imgs(noise,save_path,bbox_inches='tight',pad_inches=0)
-
+def plt_noises(imgs:torch.Tensor,noised:torch.Tensor,save_path:str):
+    assert(imgs.shape==noised.shape)
+    assert(len(imgs.shape)==4)
+    noises=noised-imgs
+    for i,noise in enumerate(noises):
+        if noise.min()<0:
+            sample_noise=noise-noise.min()
+        sample_noise+=0.1
+        #use PIL to plot the image 
+        transform=transforms.Compose([
+            transforms.ToPILImage(),])
+        pil_noise=transform(sample_noise.cpu())
+        #use plt to plot the image without axis
+        plt.axis('off')
+        plt.imshow(pil_noise)
+        print('saving in'+save_path+f'plt_{i}.svg')
+        plt.savefig(save_path+f'plt_{i}.svg',bbox_inches='tight',pad_inches=0)
+        plt.savefig(save_path+f'plt_{i}.png',bbox_inches='tight',pad_inches=0)

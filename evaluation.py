@@ -164,7 +164,7 @@ def quick_train(batch_size: int = 256, epoch: int = 10):
 
 class TEST_PIPELINE():
     def __init__(self) -> None:
-        self.disc=Test_ViT()
+        self.disc=Test_ConvNext()
         self.model=Wrapper(
             gen=None,
             target=self.disc
@@ -243,13 +243,13 @@ class TEST_PIPELINE():
             image=[transform(img.convert('RGB')) for img in image]
             label=torch.tensor(label)
             image=torch.stack(image,dim=0)
-            noised,_=self.RUN_PGD_TEST(epoch,image.cuda().clone(),label.cuda().clone())
+            noised,_=self.RUN_CE_TEST(epoch,image.cuda().clone(),label.cuda().clone())
             return {
                 "image":image,
                 "label":label,
                 "noised":noised.cpu()
             }
-        return dataset.map(map_fn,batched=True,batch_size=60,num_proc=1)
+        return dataset.map(map_fn,batched=True,batch_size=10,num_proc=1)
     def measure_dis(self,noise:torch.Tensor, image:torch.Tensor)->torch.Tensor:
         if not hasattr(self,"l1_fn"):
             self.l1_fn=nn.L1Loss()
@@ -335,8 +335,8 @@ class TEST_PIPELINE():
         if "plt_dif" in kwds:
             plt_dif=kwds["plt_dif"]
             if plt_dif==True:
-                print("Plotting diffed image")
-                plt_difs(noised,image,self.difimg_save_path)
+                print("Plotting noises")
+                plt_noises(noised,image,self.difimg_save_path)
         print("Test pipeline finished")
         return noised
         
@@ -403,11 +403,12 @@ if __name__ == "__main__":
     #models=[Test_ViT(),Test_Resnet(),Test_FocalNet(),Test_ConvNext()]
     #for model in models:
     #    test_on_noised_dataset(model)
+    
     PIPl=TEST_PIPELINE()
     #PIPl.RUN_TEST_ON_ALL(30)
     #PIPl.MAKE_NOISED_DATASET(
     #    epoch=30,
     #)
     #PIPl.RUN_TEST_ON_ALL(30)
-    PIPl(plt=True)
+    PIPl(plt_dif=True,plt=True)
     #model=Test_Inc()

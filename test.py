@@ -228,7 +228,7 @@ def test_loss():
 def make_noise():
     pipl=TEST_PIPELINE()
     test_dataset=datasets.load_from_disk(Params["train_dataset_path"],keep_in_memory=True)
-    dataset=pipl.MAKE_NOISED_DATASET(50,test_dataset)
+    dataset=pipl.MAKE_NOISED_DATASET(30,test_dataset)
     dataset.save_to_disk(Params['noised_dataset_path'])
 if __name__== "__main__":
     make_noise()
